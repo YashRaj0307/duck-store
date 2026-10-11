@@ -168,7 +168,13 @@ mvn clean test
 
 Tests cover pricing boundaries at 100/101 and 1,000/1,001 units, country rates and aliases, packaging selection, protection materials, invalid prices/quantities, duplicate-update conflicts, and missing inventory.
 
-Inventory merging uses PostgreSQL `INSERT ... ON CONFLICT` backed by a partial unique index. The unit tests mock the repository and do not independently prove PostgreSQL concurrency behavior. Before release, run simultaneous requests against a real PostgreSQL database and verify that only one active matching row exists and its quantity equals the sum of successful requests.
+Inventory merging uses PostgreSQL `INSERT ... ON CONFLICT` backed by a partial unique index. The unit tests mock the repository and do not independently prove PostgreSQL concurrency behavior. After starting the backend, run the black-box concurrency smoke test from the repository root:
+
+```powershell
+python scripts/concurrency-smoke.py
+```
+
+It sends concurrent create requests with a unique test price, checks that one active row contains the expected summed quantity, and soft-deletes its test row afterward. Before release, also test against representative production-like traffic and database configuration.
 
 ## Git workflow
 

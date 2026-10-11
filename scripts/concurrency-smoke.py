@@ -4,6 +4,7 @@ import concurrent.futures
 import json
 import os
 import random
+from decimal import Decimal
 import urllib.error
 import urllib.request
 
@@ -32,13 +33,13 @@ def request(method, path, payload=None):
 
 # Pick a high, random unit price and verify it is not already present before the run.
 for _ in range(100):
-    price = f"{100000 + random.randrange(0, 10000)}.{random.randrange(0, 100):02d}"
+    price = Decimal(f"{100000 + random.randrange(0, 10000)}.{random.randrange(0, 100):02d}")
     _, current = request("GET", "/api/ducks")
     existing = [
         duck for duck in current
         if duck["color"] == "Green"
         and duck["size"] == "XSmall"
-        and float(duck["price"]) == float(price)
+        and Decimal(str(duck["price"])) == price
     ]
     if not existing:
         break
@@ -52,21 +53,30 @@ payload = {
     "quantity": 1,
 }
 
+request_errors = []
 with concurrent.futures.ThreadPoolExecutor(max_workers=REQUESTS) as pool:
     futures = [pool.submit(request, "POST", "/api/ducks", payload) for _ in range(REQUESTS)]
-    responses = [future.result() for future in concurrent.futures.as_completed(futures)]
+    for future in concurrent.futures.as_completed(futures):
+        try:
+            future.result()
+        except Exception as exc:  # collect failures so created test rows can still be cleaned up
+            request_errors.append(str(exc))
 
 _, ducks = request("GET", "/api/ducks")
 matches = [
     duck for duck in ducks
     if duck["color"] == "Green"
     and duck["size"] == "XSmall"
-    and float(duck["price"]) == float(price)
+    and Decimal(str(duck["price"])) == price
 ]
 
-if len(matches) != 1:
-    raise SystemExit(f"FAIL: expected 1 active matching row, found {len(matches)}")
-if matches[0]["quantity"] != REQUESTS:
+if request_errors or len(matches) != 1 or matches[0]["quantity"] != REQUESTS:
+    for duck in matches:
+        request("DELETE", f"/api/ducks/{duck['id']}")
+    if request_errors:
+        raise SystemExit("FAIL: one or more create requests failed: " + "; ".join(request_errors))
+    if len(matches) != 1:
+        raise SystemExit(f"FAIL: expected 1 active matching row, found {len(matches)}")
     raise SystemExit(
         f"FAIL: expected quantity {REQUESTS}, got {matches[0]['quantity']}"
     )
