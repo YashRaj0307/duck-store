@@ -57,20 +57,19 @@ public class PricingService {
                     "Land shipping (10 USD × quantity)", money(new BigDecimal("10.00")
                     .multiply(BigDecimal.valueOf(quantity)))));
             case AIR -> {
-                BigDecimal airCharge = new BigDecimal("30.00").multiply(BigDecimal.valueOf(quantity));
+                // Keep the original charge and the discount as separate lines so the
+                // itemized breakdown explains the calculation without subtracting the
+                // 15% reduction twice.
+                BigDecimal airCharge = money(new BigDecimal("30.00")
+                        .multiply(BigDecimal.valueOf(quantity)));
+                lines.add(new PriceLine("AIR_SHIPPING",
+                        "Air shipping before volume reduction (30 USD × quantity)", airCharge));
+
                 if (quantity > 1000) {
-                    airCharge = airCharge.multiply(new BigDecimal("0.85"));
+                    BigDecimal discount = money(airCharge.multiply(new BigDecimal("0.15")));
                     lines.add(new PriceLine("AIR_VOLUME_DISCOUNT",
                             "15% reduction on air shipping for orders over 1000 units",
-                            money(airCharge.subtract(new BigDecimal("30.00")
-                                    .multiply(BigDecimal.valueOf(quantity))).setScale(2, RoundingMode.HALF_UP))));
-                } else {
-                    lines.add(new PriceLine("AIR_SHIPPING",
-                            "Air shipping (30 USD × quantity)", money(airCharge)));
-                }
-                if (quantity > 1000) {
-                    lines.add(new PriceLine("AIR_SHIPPING",
-                            "Air shipping after 15% volume reduction", money(airCharge)));
+                            discount.negate()));
                 }
             }
         }

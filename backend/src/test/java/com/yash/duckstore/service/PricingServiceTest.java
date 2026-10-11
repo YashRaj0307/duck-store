@@ -44,7 +44,7 @@ class PricingServiceTest {
                 PackageType.PLASTIC, "Canada", ShippingMode.AIR);
 
         assertEquals(new BigDecimal("-4504.50"), amount(result.lines(), "AIR_VOLUME_DISCOUNT"));
-        assertEquals(new BigDecimal("25525.50"), amount(result.lines(), "AIR_SHIPPING"));
+        assertEquals(new BigDecimal("30030.00"), amount(result.lines(), "AIR_SHIPPING"));
         assertEquals("OTHER", result.normalizedCountry());
         assertEquals(new BigDecimal("26576.55"), result.total());
     }
