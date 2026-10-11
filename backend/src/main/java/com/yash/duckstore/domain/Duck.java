@@ -61,7 +61,7 @@ public class Duck {
 
     @PreUpdate
     void onUpdate() {
-        updatedAt = Instant.now();
+        updatedAt = LocalDateTime.now(ZoneOffset.UTC);
     }
 
     public Long getId() { return id; }
