@@ -1,0 +1,914 @@
+{
+  "info": {
+    "_postman_id": "d3d7c9f8-0c5d-4d2a-bdb5-dukstoreapi",
+    "name": "Duck Store - Complete API Smoke & Business Rule Tests",
+    "description": "Sequential API test suite for Duck Store. Uses collection variables and randomized prices for test inventory. Run against a local development database only. The collection creates test rows and soft-deletes the Green XLarge test row at the end; the Red Medium and Yellow Small rows remain active for inspection.",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "variable": [
+    {
+      "key": "baseUrl",
+      "value": "http://localhost:8080",
+      "type": "string"
+    },
+    {
+      "key": "greenPrice",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "greenUpdatedPrice",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "greenDuckId",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "greenInitialQuantity",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "mediumPrice",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "mediumDuckId",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "smallPrice",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "smallDuckId",
+      "value": "",
+      "type": "string"
+    }
+  ],
+  "item": [
+    {
+      "name": "01 - Inventory CRUD and validation",
+      "item": [
+        {
+          "name": "01 - Create Green XLarge duck",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/ducks",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "ducks"
+              ]
+            },
+            "description": "Creates test inventory. A randomized price reduces the chance of touching an existing inventory row.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"color\": \"Green\",\n  \"size\": \"XLarge\",\n  \"price\": \"{{greenPrice}}\",\n  \"quantity\": 10\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "if (!pm.collectionVariables.get(\"greenPrice\")) {",
+                  "  const cents = Math.floor(Math.random() * 80000) + 10000;",
+                  "  const price = (cents / 100).toFixed(2);",
+                  "  pm.collectionVariables.set(\"greenPrice\", price);",
+                  "  pm.collectionVariables.set(\"greenUpdatedPrice\", (Number(price) + 1.37).toFixed(2));",
+                  "}"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Created or accepted inventory row\", function () { pm.expect(pm.response.code).to.be.oneOf([200, 201]); });",
+                  "const data = pm.response.json();",
+                  "pm.expect(data).to.have.property(\"id\");",
+                  "pm.expect(data.color).to.eql(\"Green\");",
+                  "pm.expect(data.size).to.eql(\"XLarge\");",
+                  "pm.collectionVariables.set(\"greenDuckId\", String(data.id));",
+                  "pm.collectionVariables.set(\"greenInitialQuantity\", String(data.quantity));",
+                  "pm.test(\"Response includes positive price and quantity\", function () {",
+                  "  pm.expect(Number(data.price)).to.be.greaterThan(0);",
+                  "  pm.expect(data.quantity).to.be.greaterThan(0);",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "02 - Merge matching Green XLarge quantity",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/ducks",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "ducks"
+              ]
+            },
+            "description": "Checks the atomic merge behavior for the same color, size, and price.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"color\": \"Green\",\n  \"size\": \"XLarge\",\n  \"price\": \"{{greenPrice}}\",\n  \"quantity\": 5\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Merge request succeeds\", function () { pm.expect(pm.response.code).to.eql(201); });",
+                  "const data = pm.response.json();",
+                  "pm.test(\"Same inventory ID is reused\", function () {",
+                  "  pm.expect(String(data.id)).to.eql(pm.collectionVariables.get(\"greenDuckId\"));",
+                  "});",
+                  "pm.test(\"Quantity increased by five\", function () {",
+                  "  pm.expect(data.quantity).to.eql(Number(pm.collectionVariables.get(\"greenInitialQuantity\")) + 5);",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "03 - List active ducks (quantity sorted)",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/ducks",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "ducks"
+              ]
+            },
+            "description": ""
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"List returns 200 and an array\", function () {",
+                  "  pm.response.to.have.status(200);",
+                  "  pm.expect(pm.response.json()).to.be.an(\"array\");",
+                  "});",
+                  "const rows = pm.response.json();",
+                  "pm.test(\"Rows are sorted by quantity ascending (ID as tie-breaker)\", function () {",
+                  "  for (let i = 1; i < rows.length; i++) {",
+                  "    pm.expect(",
+                  "      rows[i-1].quantity < rows[i].quantity ||",
+                  "      (rows[i-1].quantity === rows[i].quantity && rows[i-1].id <= rows[i].id)",
+                  "    ).to.eql(true);",
+                  "  }",
+                  "});",
+                  "pm.test(\"Created duck is visible\", function () {",
+                  "  pm.expect(rows.some(x => String(x.id) === pm.collectionVariables.get(\"greenDuckId\"))).to.eql(true);",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "04 - Get Green duck by ID",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/ducks/{{greenDuckId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "ducks",
+                "{{greenDuckId}}"
+              ]
+            },
+            "description": ""
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.response.to.have.status(200);",
+                  "const data = pm.response.json();",
+                  "pm.expect(String(data.id)).to.eql(pm.collectionVariables.get(\"greenDuckId\"));",
+                  "pm.expect(data.color).to.eql(\"Green\");",
+                  "pm.expect(data.size).to.eql(\"XLarge\");"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "05 - Update Green duck price and quantity",
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/ducks/{{greenDuckId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "ducks",
+                "{{greenDuckId}}"
+              ]
+            },
+            "description": "Only price and quantity are editable; color and size must remain unchanged.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"price\": \"{{greenUpdatedPrice}}\",\n  \"quantity\": 12\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.response.to.have.status(200);",
+                  "const data = pm.response.json();",
+                  "pm.expect(String(data.id)).to.eql(pm.collectionVariables.get(\"greenDuckId\"));",
+                  "pm.expect(Number(data.price)).to.eql(Number(pm.collectionVariables.get(\"greenUpdatedPrice\")));",
+                  "pm.expect(data.quantity).to.eql(12);",
+                  "pm.expect(data.color).to.eql(\"Green\");",
+                  "pm.expect(data.size).to.eql(\"XLarge\");"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "13 - Validation: reject zero quantity",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/ducks",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "ducks"
+              ]
+            },
+            "description": "",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"color\": \"Black\",\n  \"size\": \"XSmall\",\n  \"price\": \"10.00\",\n  \"quantity\": 0\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.response.to.have.status(400);",
+                  "pm.test(\"Validation error has problem detail\", function () {",
+                  "  const data = pm.response.json();",
+                  "  pm.expect(data).to.have.property(\"title\");",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "14 - Validation: reject unsupported color",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/ducks",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "ducks"
+              ]
+            },
+            "description": "",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"color\": \"Purple\",\n  \"size\": \"Small\",\n  \"price\": \"10.00\",\n  \"quantity\": 1\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.response.to.have.status(400);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "15 - Not found: unknown duck ID",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/ducks/999999999",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "ducks",
+                "999999999"
+              ]
+            },
+            "description": ""
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.response.to.have.status(404);"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "02 - Order pricing and business rules",
+      "item": [
+        {
+          "name": "06 - Order pricing: Land + India + Wood",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/orders",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "orders"
+              ]
+            },
+            "description": "",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"color\": \"Green\",\n  \"size\": \"XLarge\",\n  \"quantity\": 2,\n  \"destinationCountry\": \"India\",\n  \"shippingMode\": \"Land\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.response.to.have.status(200);",
+                  "const data = pm.response.json();",
+                  "pm.expect(data.packageType).to.eql(\"WOOD\");",
+                  "pm.expect(data.protectionTypes).to.include(\"Polystyrene balls\");",
+                  "pm.expect(data.priceBreakdown.some(x => x.code === \"LAND_SHIPPING\" && Number(x.amount) === 20)).to.eql(true);",
+                  "pm.expect(Number(data.totalToPay)).to.be.greaterThan(0);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "07 - Order pricing: Air at exactly 1000 units (no bulk air discount)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/orders",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "orders"
+              ]
+            },
+            "description": "",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"color\": \"Green\",\n  \"size\": \"XLarge\",\n  \"quantity\": 1000,\n  \"destinationCountry\": \"USA\",\n  \"shippingMode\": \"Air\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.response.to.have.status(200);",
+                  "const data = pm.response.json();",
+                  "pm.expect(data.packageType).to.eql(\"WOOD\");",
+                  "pm.expect(data.priceBreakdown.some(x => x.code === \"AIR_SHIPPING\")).to.eql(true);",
+                  "pm.expect(data.priceBreakdown.some(x => x.code === \"AIR_VOLUME_DISCOUNT\")).to.eql(false);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "08 - Order pricing: Air at 1001 units (bulk air discount applies)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/orders",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "orders"
+              ]
+            },
+            "description": "",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"color\": \"Green\",\n  \"size\": \"XLarge\",\n  \"quantity\": 1001,\n  \"destinationCountry\": \"USA\",\n  \"shippingMode\": \"Air\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.response.to.have.status(200);",
+                  "const data = pm.response.json();",
+                  "pm.expect(data.priceBreakdown.some(x => x.code === \"AIR_SHIPPING\")).to.eql(true);",
+                  "const discount = data.priceBreakdown.find(x => x.code === \"AIR_VOLUME_DISCOUNT\");",
+                  "pm.expect(discount).to.exist;",
+                  "pm.expect(Number(discount.amount)).to.be.below(0);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "09 - Create Medium duck for cardboard/Sea test",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/ducks",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "ducks"
+              ]
+            },
+            "description": "",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"color\": \"Red\",\n  \"size\": \"Medium\",\n  \"price\": \"{{mediumPrice}}\",\n  \"quantity\": 20\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const cents = Math.floor(Math.random() * 80000) + 10000;",
+                  "pm.collectionVariables.set(\"mediumPrice\", (cents / 100).toFixed(2));"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.response.to.have.status(201);",
+                  "const data = pm.response.json();",
+                  "pm.collectionVariables.set(\"mediumDuckId\", String(data.id));",
+                  "pm.test(\"Medium test duck created\", function () {",
+                  "  pm.expect(data.color).to.eql(\"Red\");",
+                  "  pm.expect(data.size).to.eql(\"Medium\");",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "10 - Order pricing: Sea + Bolivia + Cardboard",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/orders",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "orders"
+              ]
+            },
+            "description": "",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"color\": \"Red\",\n  \"size\": \"Medium\",\n  \"quantity\": 2,\n  \"destinationCountry\": \"Bolivia\",\n  \"shippingMode\": \"Sea\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.response.to.have.status(200);",
+                  "const data = pm.response.json();",
+                  "pm.expect(data.packageType).to.eql(\"CARDBOARD\");",
+                  "pm.expect(data.protectionTypes).to.include(\"Moisture-absorbing beads\");",
+                  "pm.expect(data.protectionTypes).to.include(\"Bubble-wrap bags\");",
+                  "pm.expect(data.priceBreakdown.some(x => x.code === \"SEA_SHIPPING\" && Number(x.amount) === 400)).to.eql(true);",
+                  "pm.expect(data.priceBreakdown.some(x => x.code === \"DESTINATION_SURCHARGE\" && x.description.includes(\"13%\"))).to.eql(true);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "11 - Create Small duck for Plastic/Air test",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/ducks",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "ducks"
+              ]
+            },
+            "description": "",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"color\": \"Yellow\",\n  \"size\": \"Small\",\n  \"price\": \"{{smallPrice}}\",\n  \"quantity\": 25\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const cents = Math.floor(Math.random() * 80000) + 10000;",
+                  "pm.collectionVariables.set(\"smallPrice\", (cents / 100).toFixed(2));"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.response.to.have.status(201);",
+                  "const data = pm.response.json();",
+                  "pm.collectionVariables.set(\"smallDuckId\", String(data.id));",
+                  "pm.expect(data.size).to.eql(\"Small\");"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "12 - Order pricing: Air + Plastic protection",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/orders",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "orders"
+              ]
+            },
+            "description": "",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"color\": \"Yellow\",\n  \"size\": \"Small\",\n  \"quantity\": 1,\n  \"destinationCountry\": \"India\",\n  \"shippingMode\": \"Air\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.response.to.have.status(200);",
+                  "const data = pm.response.json();",
+                  "pm.expect(data.packageType).to.eql(\"PLASTIC\");",
+                  "pm.expect(data.protectionTypes).to.include(\"Bubble-wrap bags\");",
+                  "pm.expect(data.protectionTypes).not.to.include(\"Polystyrene balls\");",
+                  "pm.expect(data.priceBreakdown.some(x => x.code === \"PLASTIC_PACKAGE\")).to.eql(true);",
+                  "pm.expect(data.priceBreakdown.some(x => x.code === \"DESTINATION_SURCHARGE\" && x.description.includes(\"19%\"))).to.eql(true);"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "03 - Soft deletion verification",
+      "item": [
+        {
+          "name": "16 - Delete Green test duck (soft delete)",
+          "request": {
+            "method": "DELETE",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/ducks/{{greenDuckId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "ducks",
+                "{{greenDuckId}}"
+              ]
+            },
+            "description": ""
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.response.to.have.status(204);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "17 - Verify deleted Green duck is hidden",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/ducks/{{greenDuckId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "ducks",
+                "{{greenDuckId}}"
+              ]
+            },
+            "description": ""
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.response.to.have.status(404);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "18 - Verify active list no longer contains deleted Green duck",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/ducks",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "ducks"
+              ]
+            },
+            "description": ""
+          },
+          "response": [],
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.response.to.have.status(200);",
+                  "const rows = pm.response.json();",
+                  "pm.expect(rows.some(x => String(x.id) === pm.collectionVariables.get(\"greenDuckId\"))).to.eql(false);"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}
